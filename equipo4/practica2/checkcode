@@ -1,0 +1,1 @@
+/home/e4/linux-stable/scripts/checkpatch.pl -f --no-tree $1

@@ -1,0 +1,1 @@
+gcc prac2.c prac2.h -o alsa -lasound

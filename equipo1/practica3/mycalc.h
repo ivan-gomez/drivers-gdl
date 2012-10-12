@@ -1,0 +1,9 @@
+#include <linux/ioctl.h>
+#include "mycalc_StatusCodes.h"
+#define MYCALC_IOC_MAGIC 		0x94
+
+#define MYCALC_IOC_SET_NUM1		_IOW(MYCALC_IOC_MAGIC, 0x1, long)
+#define MYCALC_IOC_SET_NUM2		_IOW(MYCALC_IOC_MAGIC, 0x2, long)
+#define MYCALC_IOC_SET_OPERATION	_IOW(MYCALC_IOC_MAGIC, 0x3, char)
+#define MYCALC_IOC_GET_RESULT		_IO(MYCALC_IOC_MAGIC, 0x4 )
+#define MYCALC_IOC_DO_OPERATION		_IO(MYCALC_IOC_MAGIC, 0x5 )

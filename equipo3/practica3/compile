@@ -1,0 +1,19 @@
+make
+insmod calc.ko
+
+echo "5+3" > /dev/mycalc0
+cat /dev/mycalc0
+
+echo "- 3" > /dev/mycalc0
+cat /dev/mycalc0
+
+echo "5 3" > /dev/mycalc0
+cat /dev/mycalc0
+
+echo "5 -" > /dev/mycalc0
+cat /dev/mycalc0
+
+gcc -o app app.c
+./app
+
+rmmod calc.ko

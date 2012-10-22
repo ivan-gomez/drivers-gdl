@@ -24,8 +24,7 @@ int main ()
     /* Open a file */
     f = open ("/dev/mycalc0", O_RDWR, 0666);
 
-    if (f == -1)
-    {
+    if (f == -1) {
         printf ("\nfailed to open file.");
         return 1;
     }

@@ -1,0 +1,16 @@
+#ifndef __CONF_APP
+#define __CONF_APP
+
+#define SHELL "/bin/sh"
+#define dev "/dev/ttyS1"
+
+#define PARALLEL_PORT		0x22
+#define PARALLEL_PORT_IRQ	0x6
+#define CALCULATOR		0x19
+#define CALCULATOR_IOCTL	0xC
+#define AUDIO_PLAY		0x18
+#define AUDIO_RECORD		0x11
+
+#define MAX_SIZE		80
+
+#endif

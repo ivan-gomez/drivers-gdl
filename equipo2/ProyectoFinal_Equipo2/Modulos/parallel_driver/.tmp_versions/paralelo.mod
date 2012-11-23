@@ -1,0 +1,2 @@
+/home/teamgearsofwarftw/ProyectoFinal_Equipo2/Modulos/parallel_driver/paralelo.ko
+/home/teamgearsofwarftw/ProyectoFinal_Equipo2/Modulos/parallel_driver/paralelo.o

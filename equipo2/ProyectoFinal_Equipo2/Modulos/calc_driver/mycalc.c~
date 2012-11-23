@@ -1,0 +1,285 @@
+#include <linux/module.h>
+#include <linux/fs.h>
+#include <linux/cdev.h>
+#include <linux/device.h>
+#include <linux/uaccess.h>
+#include <linux/kernel.h>
+#include <linux/string.h>
+#include "operations.h"
+#include "mycalc.h"
+
+
+#define DEVICE_NAME	"mycalc"
+#define MAX_SIZE	128
+#define INT_MAX_SIZE    10
+
+
+static unsigned major;				/* major number */
+static struct cdev my_dev;			/* to register with kernel */
+static struct class *mydev_class;	/* to register with sysfs */
+static struct device *mydev_device;		/* to register with sysfs */
+static char buffer[MAX_SIZE];
+static long ret;
+bool read_flag;
+long result;
+long num1, num2;
+char operation;
+int size;
+
+/*Funcion de lectura - Llamada al usar cat desde Command Line*/
+static ssize_t my_read(struct file *filp, char __user *buf,
+					size_t nbuf, loff_t *offs)
+{
+	pr_info("%s:%d\n", __func__, __LINE__);
+	/* Se copia el buffer de kernel al del usuario*/
+	copy_to_user(__user buf, buffer, size);
+
+	/*Asegurarse de no mandar un 0 la primera vez, o no mostrara nada en terminal*/
+	if (read_flag)
+		ret = size;
+	else
+		ret = 0;
+
+	read_flag = false;
+	/*Opcion para visualizar desde Kernel la informacion de la operacion*/
+	pr_info("Resultado es: %ld\n", result);
+	return ret;
+}
+
+/*Funcion de escritura - Llamada al usar echo desde Command Line*/
+static ssize_t my_write(struct file *filp, const char __user *buf,
+					size_t nbuf, loff_t *offs)
+{
+	/*Definicion de variables y apuntadores a utilizar*/
+	int count;
+	int counter;
+	char *ptr, *op1, *op2, *op1_b, *op2_b;
+	char op1buff[INT_MAX_SIZE];
+	char op2buff[INT_MAX_SIZE];
+	char op_flag;
+	bool opswitch;
+	bool infinite_flag;
+
+	pr_info("%s:%d\n", __func__, __LINE__);
+	/*Se copia del buffer de usuario al del kernel*/
+	copy_from_user(buffer, __user buf, nbuf);
+	pr_info("%s", buffer);
+
+	/*Inicializacion de variables y apuntadores a utilizar*/
+	count = 0;
+	counter = 0;
+	opswitch = false;
+	infinite_flag = false;
+	read_flag = true;
+	op_flag = true;
+	op1 = &op1buff[0];
+	op2 = &op2buff[0];
+	op1_b = op1;
+	op2_b = op2;
+	ptr = buffer;
+
+	/*Ciclo para adquirir y decodificar el string cuando se
+	uso el comando echo desde Command Line. Se asignan op1,
+	op2 y el caracter de operacion*/
+	while (counter != (nbuf)) {
+		/*Decodificacion de operacion a realizar, se activa la
+		bandera para obtener segundo operando*/
+		if (*ptr == '+' || *ptr == '-' || *ptr == '*' || *ptr == '/') {
+			operation = *ptr;
+			count = 0;
+			op_flag = false;
+		} else {
+			/*Creacion de ambos operandos, existe intervalo de bandera*/
+			if (((*ptr >= '0' && *ptr <= '9') || *ptr == 10) && count <= 5) {
+				if (op_flag) {
+					*op1 = *ptr;
+					op1++;
+				} else {
+					*op2 = *ptr;
+					op2++;
+				}
+				count++;
+			}
+		}
+
+		counter++;
+		ptr++;
+	}
+
+	*op1 = '\0';
+	*op2 = '\0';
+
+	/*Conversion de string a long usando la funcion simple_strtol*/
+	num1 = simple_strtol(op1_b, '\0', 10);
+	num2 = simple_strtol(op2_b, '\0', 10);
+
+	/*Validar caso de operacion a realizar y llamar funciones
+	aritmetias faciles desde archivo operations.h*/
+	switch (operation) {
+	case '+':
+		result = suma(num1, num2);
+	break;
+
+	case '-':
+		result = resta(num1, num2);
+	break;
+
+	case '*':
+		result = mult(num1, num2);
+	break;
+
+	case '/':
+		/*Para el caso de la division, existe un
+		parametro especial que indica si se esta
+		dividiendo entre cero*/
+		if (num2 == 0)
+			infinite_flag = true;
+		else
+			result = div(num1, num2);
+	break;
+	}
+
+	/*Se imprime en la terminal el resultado adquirido o el
+	error existente*/
+	if (infinite_flag)
+		sprintf(buffer, "ERROR: No se puede dividir entre 0\n");
+	else
+		sprintf(buffer, "Resultado: %ld\n NOTA: Si un numero no fue entero se toma como 0\n", result);
+
+	/*Se toma el tamaño del string. Necesario para correcto
+	funcionamiento de la función read*/
+	size = strlen(buffer);
+	return nbuf;
+}
+
+/*Funcion llamada cuando la aplicacion del usuario abre un manejador
+a este archivo*/
+static int my_open(struct inode *ip, struct file *filp)
+{
+	pr_info("%s:%d\n", __func__, __LINE__);
+	return 0;
+}
+
+/*Funcion llamada cuando la aplicacion del usuario cierra un manejador
+a este archivo*/
+static int my_close(struct inode *ip, struct file *filp)
+{
+	pr_info("%s:%d\n", __func__, __LINE__);
+	return 0;
+}
+
+static int my_ioctl(struct file *filp, unsigned int cmd, unsigned long arg)
+{
+
+	switch (cmd) {
+
+	case MYCALC_IOC_SET_NUM1:
+		num1 = arg;
+		pr_info("NUM1: %ld\n", num1);
+	break;
+	case MYCALC_IOC_SET_NUM2:
+		num2 = arg;
+		pr_info("NUM2: %ld\n", num2);
+	break;
+	case MYCALC_IOC_SET_OPERATION:
+		operation = arg;
+		pr_info("OPERATION: %c\n", operation);
+	break;
+	case MYCALC_IOC_GET_RESULT:
+		result = oper(num1, num2, operation);
+		pr_info("RESULT: %ld\n", result);
+		return (int)result;
+	break;
+	case MYCALC_IOC_DO_OPERATION:
+		result = oper(num1, num2, operation);
+		pr_info("Result: %ld\n", result);
+		return (int)result;
+	break;
+	default:
+		return -ENOTTY;
+	break;
+	}
+	pr_info("%s:%d\n", __func__, __LINE__);
+	return 0;
+}
+
+/*Asignacion de funciones entre usuario y kernel*/
+static const struct file_operations mydev_fops = {
+	.owner = THIS_MODULE,
+	.read = my_read,
+	.write = my_write,
+	.unlocked_ioctl = my_ioctl,
+	.open = my_open,
+	.release = my_close,
+};
+
+static int __init mymodule_init(void)
+{
+	dev_t dev_id;
+	int ret;
+
+	/* Allocate major/minor numbers */
+	ret = alloc_chrdev_region(&dev_id, 0, 1, DEVICE_NAME);
+	if (ret) {
+		pr_info("Error: Failed registering major number\n");
+		return -1;
+	}
+	/* save MAJOR number */
+	major = MAJOR(dev_id);
+
+	/* Initialize cdev structure and register it with the kernel*/
+	cdev_init(&my_dev, &mydev_fops);
+	my_dev.owner = THIS_MODULE;
+	/* Register the char device with the kernel */
+	ret = cdev_add(&my_dev, dev_id, 1);
+	if (ret) {
+		pr_info("Error: Failed registering with the kernel\n");
+		unregister_chrdev_region(dev_id, 1);
+		return -1;
+	}
+
+	/* Create a class and register with the sysfs. (Failure is not fatal) */
+	mydev_class = class_create(THIS_MODULE, DEVICE_NAME);
+	if (IS_ERR(mydev_class)) {
+		pr_info("class_create() failed: %ld\n",
+						PTR_ERR(mydev_class));
+		mydev_class = NULL;
+	} else {
+		/* Register device with sysfs (creates device node in /dev) */
+		mydev_device = device_create(mydev_class, NULL, dev_id,
+							NULL, DEVICE_NAME"0");
+		if (IS_ERR(mydev_device)) {
+			pr_info("device_create() failed: %ld\n",
+						PTR_ERR(mydev_device));
+			mydev_device = NULL;
+		}
+	}
+
+	pr_info("Driver \"%s\" loaded...\n", DEVICE_NAME);
+	return 0;
+}
+
+static void __exit mymodule_exit(void)
+{
+	/* Deregister services from kernel */
+	cdev_del(&my_dev);
+
+	/* Release major/minor numbers */
+	unregister_chrdev_region(MKDEV(major, 0), 1);
+
+	/* Undone everything initialized in init function */
+	if (mydev_class != NULL) {
+		device_destroy(mydev_class, MKDEV(major, 0));
+		class_destroy(mydev_class);
+	}
+
+	pr_info("Driver \"%s\" unloaded...\n", DEVICE_NAME);
+}
+
+module_init(mymodule_init);
+module_exit(mymodule_exit);
+
+MODULE_AUTHOR("Equipo 2");
+MODULE_LICENSE("GPL");
+MODULE_DESCRIPTION("Practica 3");
+
